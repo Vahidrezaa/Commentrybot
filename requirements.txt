@@ -1,0 +1,4 @@
+# requirements.txt
+selenium
+googletrans==4.0.0rc1
+python-telegram-bot==13.19
