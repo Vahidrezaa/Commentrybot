@@ -17,7 +17,6 @@ CHECK_INTERVAL = int(os.environ.get('CHECK_INTERVAL', 20))  # ثانیه
 
 # راه‌اندازی ربات و مترجم
 bot = Bot(token=TELEGRAM_TOKEN)
-translator = Translator()
 
 # ذخیره متن‌های ارسال شده
 sent_texts = set()
