@@ -6,7 +6,7 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from deep_translator import Translator
+from deep_translator import GoogleTranslator
 from telegram import Bot
 
 # خواندن متغیرهای محیطی
@@ -61,7 +61,7 @@ try:
         for text in live_texts:
             if text not in sent_texts:
                 sent_texts.add(text)
-                translated = translator(source='en', target='fa').translate(text)
+                translated = GoogleTranslator(source='en', target='fa').translate(text)
                 bot.send_message(chat_id=CHANNEL_ID, text=translated)
         time.sleep(CHECK_INTERVAL)
 except KeyboardInterrupt:
