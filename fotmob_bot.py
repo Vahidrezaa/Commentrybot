@@ -4,7 +4,7 @@ import threading
 import time
 from telegram import Bot, Update
 from telegram.ext import Updater, CommandHandler, Filters, CallbackContext
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 from typing import Dict, Set, Any
 
 # تنظیمات
@@ -14,7 +14,7 @@ CHECK_INTERVAL = 30  # چک هر ۳۰ ثانیه
 MAX_MESSAGE_LENGTH = 4000  # حاشیه ایمنی برای طول پیام
 
 bot = Bot(token=BOT_TOKEN)
-translator = Translator()
+translator = GoogleTranslator(source='en', target='fa')
 
 # دیکشنری برای match_id: (thread, seen_events set, home_team, away_team, is_active)
 active_matches: Dict[str, tuple[threading.Thread, Set[str], str, str, bool]] = {}
@@ -42,12 +42,11 @@ def fetch_match_data(match_id: str) -> Dict[str, Any]:
         raise Exception(f"خطا در گرفتن داده: {str(e)}")
 
 def translate_text(text: str) -> str:
-    """ترجمه به فارسی"""
+    """ترجمه به فارسی با deep-translator"""
     if not text.strip():
         return ""
     try:
-        translated = translator.translate(text, src='en', dest='fa')
-        return translated.text
+        return translator.translate(text)
     except Exception as e:
         print(f"خطای ترجمه: {e}")
         return text
@@ -171,7 +170,7 @@ def stop(update: Update, context: CallbackContext):
         return
 
     thread, seen_events, home, away, _ = active_matches[match_id]
-    active_matches[match_id] = (thread, seen_events, home, away, False)  # غیرفعال کردن
+    active_matches[match_id] = (thread, seen_events, home, away, False)
     update.message.reply_text(f"🛑 مانیتورینگ بازی {home} vs {away} (ID: {match_id}) متوقف شد.")
 
 def status(update: Update, context: CallbackContext):
