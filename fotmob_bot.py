@@ -1,8 +1,11 @@
 import re
-import requests
-import threading
 import time
 import os
+import json
+import base64
+import hashlib
+import threading
+import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from deep_translator import GoogleTranslator
@@ -27,20 +30,36 @@ def extract_match_id(url: str) -> str:
         return match.group(1) or match.group(2)
     raise ValueError("لینک معتبر FotMob نیست! (فرمت: /match/123456 یا #123456) مثال: https://www.fotmob.com/matches/...#123456")
 
+def generate_x_mas(path: str) -> str:
+    """تولید header x-mas با base64 JSON و MD5 signature (بر اساس reverse engineering)"""
+    timestamp = int(time.time() * 1000)
+    payload = {"v": "1.0", "ts": timestamp, "p": path}
+    payload_str = json.dumps(payload, sort_keys=True)
+    signature = hashlib.md5(payload_str.encode()).hexdigest()
+    full_payload = {**payload, "sig": signature}
+    full_str = json.dumps(full_payload, sort_keys=True)
+    return base64.b64encode(full_str.encode()).decode()
+
 def fetch_match_data(match_id: str) -> Dict[str, Any]:
-    """گرفتن داده‌های matchDetails از API FotMob"""
-    url = f"https://www.fotmob.com/api/matchDetails?matchId={match_id}"
+    """گرفتن داده‌های matchDetails از API FotMob با header x-mas"""
+    path = f"/api/matchDetails?matchId={match_id}"
+    url = f"https://www.fotmob.com{path}"
+    x_mas = generate_x_mas(path)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
-        'Referer': 'https://www.fotmob.com/'
+        'Referer': 'https://www.fotmob.com/',
+        'x-mas': x_mas  # header جدید بر اساس مستندات غیررسمی
     }
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        if not data.get('content', {}).get('events'):  # اگر events خالی باشه، ممکنه بازی تموم شده
+            raise Exception("داده‌های commentary برای این بازی در دسترس نیست (ممکنه بازی تموم شده باشه)")
+        return data
     except requests.RequestException as e:
-        raise Exception(f"خطا در گرفتن داده: {str(e)}")
+        raise Exception(f"خطا در گرفتن داده: {str(e)} (status: {response.status_code if 'response' in locals() else 'N/A'})")
 
 def translate_text(text: str) -> str:
     """ترجمه به فارسی با deep-translator"""
