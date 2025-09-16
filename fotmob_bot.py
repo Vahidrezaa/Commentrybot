@@ -2,14 +2,15 @@ import re
 import requests
 import threading
 import time
+import os
 from telegram import Update
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, ContextTypes
 from deep_translator import GoogleTranslator
-from typing import Dict, Set, Any, CallbackContext
+from typing import Dict, Set, Any
 
-# تنظیمات
-BOT_TOKEN = 'YOUR_BOT_TOKEN'  # توکن بات (یا از env: os.getenv('BOT_TOKEN'))
-CHANNEL_ID = '@your_channel_id'  # آیدی کانال (یا از env: os.getenv('CHANNEL_ID'))
+# تنظیمات از env (برای Docker)
+BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN')  # حتماً env ست کن
+CHANNEL_ID = os.getenv('CHANNEL_ID', '@your_channel_id')  # حتماً env ست کن
 CHECK_INTERVAL = 30  # چک هر ۳۰ ثانیه
 MAX_MESSAGE_LENGTH = 4000  # حاشیه ایمنی برای طول پیام
 
@@ -127,7 +128,7 @@ def send_live_update(match_id: str, initial_seen: Set[str], home: str, away: str
             print(f"خطا در آپدیت {match_id}: {e}")
             time.sleep(CHECK_INTERVAL * 5)
 
-async def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """کامند /start <لینک>"""
     if not context.args:
         await update.message.reply_text("لطفاً لینک بازی FotMob رو بعد از /start بفرستید.\nمثال: /start https://www.fotmob.com/matches/...#123456")
@@ -158,7 +159,7 @@ async def start(update: Update, context: CallbackContext):
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {str(e)}\nنکته: لینک باید معتبر و از بازی جاری باشه.")
 
-async def stop(update: Update, context: CallbackContext):
+async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """کامند /stop <match_id>"""
     if not context.args:
         await update.message.reply_text("لطفاً match_id رو بعد از /stop بفرستید.\nمثال: /stop 123456")
@@ -173,7 +174,7 @@ async def stop(update: Update, context: CallbackContext):
     active_matches[match_id] = (thread, seen_events, home, away, False)
     await update.message.reply_text(f"🛑 مانیتورینگ بازی {home} vs {away} (ID: {match_id}) متوقف شد.")
 
-async def status(update: Update, context: CallbackContext):
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """کامند /status"""
     if not active_matches:
         await update.message.reply_text("هیچ بازی‌ای در حال مانیتورینگ نیست.")
@@ -185,7 +186,7 @@ async def status(update: Update, context: CallbackContext):
         response += f"- {home} vs {away} (ID: {match_id}, وضعیت: {status})\n"
     await update.message.reply_text(response)
 
-async def help_command(update: Update, context: CallbackContext):
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """کامند /help"""
     response = (
         "📖 راهنمای بات:\n"
@@ -199,6 +200,10 @@ async def help_command(update: Update, context: CallbackContext):
 
 def main():
     global bot
+    if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN':
+        print("❌ خطا: BOT_TOKEN رو تنظیم کن!")
+        return
+
     application = Application.builder().token(BOT_TOKEN).build()
     bot = application.bot  # برای استفاده در threadها
 
@@ -207,7 +212,7 @@ def main():
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("help", help_command))
     
-    print("بات شروع شد...")
+    print("✅ بات شروع شد...")
     application.run_polling()
 
 if __name__ == '__main__':
