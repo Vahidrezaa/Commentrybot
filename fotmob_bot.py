@@ -2,18 +2,18 @@ import re
 import requests
 import threading
 import time
-from telegram import Bot, Update
-from telegram.ext import Updater, CommandHandler, Filters, CallbackContext
+from telegram import Update
+from telegram.ext import Application, CommandHandler
 from deep_translator import GoogleTranslator
-from typing import Dict, Set, Any
+from typing import Dict, Set, Any, CallbackContext
 
 # تنظیمات
-BOT_TOKEN = 'YOUR_BOT_TOKEN'  # توکن بات
-CHANNEL_ID = '@your_channel_id'  # آیدی کانال
+BOT_TOKEN = 'YOUR_BOT_TOKEN'  # توکن بات (یا از env: os.getenv('BOT_TOKEN'))
+CHANNEL_ID = '@your_channel_id'  # آیدی کانال (یا از env: os.getenv('CHANNEL_ID'))
 CHECK_INTERVAL = 30  # چک هر ۳۰ ثانیه
 MAX_MESSAGE_LENGTH = 4000  # حاشیه ایمنی برای طول پیام
 
-bot = Bot(token=BOT_TOKEN)
+bot = None  # بعداً ست می‌شه
 translator = GoogleTranslator(source='en', target='fa')
 
 # دیکشنری برای match_id: (thread, seen_events set, home_team, away_team, is_active)
@@ -127,17 +127,17 @@ def send_live_update(match_id: str, initial_seen: Set[str], home: str, away: str
             print(f"خطا در آپدیت {match_id}: {e}")
             time.sleep(CHECK_INTERVAL * 5)
 
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: CallbackContext):
     """کامند /start <لینک>"""
     if not context.args:
-        update.message.reply_text("لطفاً لینک بازی FotMob رو بعد از /start بفرستید.\nمثال: /start https://www.fotmob.com/matches/...#123456")
+        await update.message.reply_text("لطفاً لینک بازی FotMob رو بعد از /start بفرستید.\nمثال: /start https://www.fotmob.com/matches/...#123456")
         return
 
     url = context.args[0]
     try:
         match_id = extract_match_id(url)
         if match_id in active_matches:
-            update.message.reply_text(f"بازی با ID {match_id} قبلاً در حال مانیتورینگ است!")
+            await update.message.reply_text(f"بازی با ID {match_id} قبلاً در حال مانیتورینگ است!")
             return
 
         data = fetch_match_data(match_id)
@@ -149,43 +149,43 @@ def start(update: Update, context: CallbackContext):
         thread.start()
         active_matches[match_id] = (thread, initial_seen, home, away, True)
 
-        update.message.reply_text(f"✅ مانیتورینگ commentary بازی {home} vs {away} (ID: {match_id}) شروع شد. آپدیت‌ها به {CHANNEL_ID} می‌ره.")
+        await update.message.reply_text(f"✅ مانیتورینگ commentary بازی {home} vs {away} (ID: {match_id}) شروع شد. آپدیت‌ها به {CHANNEL_ID} می‌ره.")
         
         update_text, _ = format_commentary_update(data, initial_seen, home, away)
         for part in split_message(update_text):
-            bot.send_message(chat_id=CHANNEL_ID, text=part)
+            await bot.send_message(chat_id=CHANNEL_ID, text=part)
         
     except Exception as e:
-        update.message.reply_text(f"❌ خطا: {str(e)}\nنکته: لینک باید معتبر و از بازی جاری باشه.")
+        await update.message.reply_text(f"❌ خطا: {str(e)}\nنکته: لینک باید معتبر و از بازی جاری باشه.")
 
-def stop(update: Update, context: CallbackContext):
+async def stop(update: Update, context: CallbackContext):
     """کامند /stop <match_id>"""
     if not context.args:
-        update.message.reply_text("لطفاً match_id رو بعد از /stop بفرستید.\nمثال: /stop 123456")
+        await update.message.reply_text("لطفاً match_id رو بعد از /stop بفرستید.\nمثال: /stop 123456")
         return
 
     match_id = context.args[0]
     if match_id not in active_matches:
-        update.message.reply_text(f"بازی با ID {match_id} در حال مانیتورینگ نیست!")
+        await update.message.reply_text(f"بازی با ID {match_id} در حال مانیتورینگ نیست!")
         return
 
     thread, seen_events, home, away, _ = active_matches[match_id]
     active_matches[match_id] = (thread, seen_events, home, away, False)
-    update.message.reply_text(f"🛑 مانیتورینگ بازی {home} vs {away} (ID: {match_id}) متوقف شد.")
+    await update.message.reply_text(f"🛑 مانیتورینگ بازی {home} vs {away} (ID: {match_id}) متوقف شد.")
 
-def status(update: Update, context: CallbackContext):
+async def status(update: Update, context: CallbackContext):
     """کامند /status"""
     if not active_matches:
-        update.message.reply_text("هیچ بازی‌ای در حال مانیتورینگ نیست.")
+        await update.message.reply_text("هیچ بازی‌ای در حال مانیتورینگ نیست.")
         return
 
     response = "📊 بازی‌های در حال مانیتورینگ:\n"
     for match_id, (_, _, home, away, is_active) in active_matches.items():
         status = "فعال" if is_active else "متوقف"
         response += f"- {home} vs {away} (ID: {match_id}, وضعیت: {status})\n"
-    update.message.reply_text(response)
+    await update.message.reply_text(response)
 
-def help_command(update: Update, context: CallbackContext):
+async def help_command(update: Update, context: CallbackContext):
     """کامند /help"""
     response = (
         "📖 راهنمای بات:\n"
@@ -195,17 +195,20 @@ def help_command(update: Update, context: CallbackContext):
         "/help - نمایش این راهنما\n\n"
         "مثال لینک: https://www.fotmob.com/matches/...#123456"
     )
-    update.message.reply_text(response)
+    await update.message.reply_text(response)
 
 def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("stop", stop))
-    dp.add_handler(CommandHandler("status", status))
-    dp.add_handler(CommandHandler("help", help_command))
-    updater.start_polling()
-    updater.idle()
+    global bot
+    application = Application.builder().token(BOT_TOKEN).build()
+    bot = application.bot  # برای استفاده در threadها
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("help", help_command))
+    
+    print("بات شروع شد...")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
